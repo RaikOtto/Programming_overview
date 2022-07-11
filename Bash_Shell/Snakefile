@@ -1,0 +1,56 @@
+rule all:
+    input:
+        'snps/test.vcf',
+        'structural_variants/test.vcf'
+
+rule alignment:
+    input:
+        '/fast/projects/cubit/work/tutorial/input/test_R1.fq.gz',
+        '/fast/projects/cubit/work/tutorial/input/test_R2.fq.gz',
+    output:
+        bam='alignment/test.bam',
+        bai='alignment/test.bam.bai',
+    shell:
+        r"""
+        export TMPDIR=/fast/users/${{USER}}/scratch/tmp
+        mkdir -p ${{TMPDIR}}
+
+        BWAREF=/fast/projects/cubit/current/static_data/precomputed/BWA/0.7.17/GRCh37/g1k_phase1/human_g1k_v37.fasta
+
+        bwa mem -t 8 \
+            -R "@RG\tID:FLOWCELL.LANE\tPL:ILLUMINA\tLB:test\tSM:PA01" \
+            ${{BWAREF}} \
+            {input} \
+        | samtools view -b - \
+        | samtools sort -O BAM -T ${{TMPDIR}} -o {output.bam}
+
+        samtools index {output.bam}
+        """
+
+rule structural_variants:
+    input:
+        'alignment/test.bam'
+    output:
+        'structural_variants/test.vcf'
+    shell:
+        r"""
+        REF=/fast/projects/cubit/current/static_data/reference/GRCh37/g1k_phase1/human_g1k_v37.fasta
+
+        delly call -o {output} -g ${{REF}} {input}
+        """
+
+rule snps:
+    input:
+        'alignment/test.bam'
+    output:
+        'snps/test.vcf'
+    shell:
+        r"""
+        REF=/fast/projects/cubit/current/static_data/reference/GRCh37/g1k_phase1/human_g1k_v37.fasta
+
+        gatk HaplotypeCaller \
+            -R ${{REF}} \
+            -I {input} \
+            -ploidy 2 \
+            -O {output}
+        """
